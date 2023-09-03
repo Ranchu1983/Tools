@@ -1,0 +1,395 @@
+#!/usr/bin/env bash
+
+#V1 syschecking running process
+#v2 check audio sink
+#v3 add check for embedded_diagnostics
+#v4 add check for monintor_node
+#v5 remove monitor_node and add diagnostic logging
+#v6 add check cloud version and wifi status
+#V7 add symlink check
+#V8 add CPU temp and utiliztion, and df -h
+#V9 add torso CV and mqtt
+#V10 add verify config files exisit
+#V11 add help msg and arguments
+#v12 add check log_auto_update
+#v13 update compatible with wassi0.0.15
+#v14 update  log_auto_update
+#v15 add version build version check
+#v16 add report error count in syslog,  update check for GUI
+#V17 update for auto launch 2.0
+#v18 add IOT service
+#v19 compatible with create_symbolic v4
+#V20 add  IOT vitals
+#V21 add time server check <systemctl status systemd-timesync>
+#22  10/4/2022  update process check for GUI. add wassi9_IOT_wearables.sh
+#23  10/24/2022 update to match log file name change  canopen_master/Wassi9.pyc __name:=canopen_master_node and  IOT_node
+#24  12/27/2022  add spacing and closing message
+
+# need help menu
+# this only work for wassi
+help_msg='''
+
+\n----------
+\n SYSCHECK
+\n----------
+\n
+\n 5/10/2022 compatible with  wassi V0.0.12
+\n 5/31/2022 compatible with  wassi V0.0.15
+\n 7/xx/2022 compatible with  wassi V0.0.19
+\n 10/24/2022 compatible with wassi V0.0.26
+\n
+\n  usage: syscheck  (p | a | wifi | c | l | d)
+\n\t\t           syscheck  p or process # check runing process
+\n\t\t                  a or audio  # audio source
+\n\t\t                  wifi  # wifi IP
+\n\t\t                  c  or cloud  # cloud IP
+\n\t\t                  l  or link or symblic #symblic link
+\n\t\t                  d  or disk #check disk storage
+\n\t\t                  log   # auto log update
+\n\t\t
+'''
+
+#echo -e $help_msg
+
+declare -a processes=(
+#"bringup"
+"/home/wassi9/ubtna_ros/share/auto_start/scripts/wassi9_embedded.sh"
+"/usr/bin/python /opt/ros/melodic/bin/roslaunch bringup wassi9.launch"
+"/opt/ros/melodic/bin/roslaunch"
+"/usr/bin/python /opt/ros/melodic/bin/rosmaster --core -p 11311 -w 3 __log"
+"/home/wassi9/ubtna_ros/lib/wj_718_lidar/wj_718_lidar __name:=wj_718_lidar_01 "
+"/opt/ros/melodic/lib/rosout/rosout"
+
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0 0 0 0 0 0 base_footprint base_link __name:=base_link_bcastr "
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.47 0 0.21 0 0 0 base_link hokuyo_link __name:=hokuyo_link_bcastr "
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.54 0.004 0.745 0 0 0 base_link waist_camera_link __name:=waist_camera_link_bcastr "
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.40 0.019 0.92 -1.574 0.003 -1.564 base_link waist_camera_color_optical_frame __name:=waist_camera_color_optical_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.185 0.115 0.081 0.4398229715 0 0 base_link front_infrared0_link __name:=front_infrared0_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.477 0.122 0.081 0.4331907203 0 0 base_link front_infrared1_link __name:=front_infrared1_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.484 0.073 0.081 0.2967059728 0 0 base_link front_infrared2_link __name:=front_infrared2_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.488 0.024 0.081 0.1919862177 0 0 base_link front_infrared3_link __name:=front_infrared3_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.488 -0.024 0.081 -0.1919862177 0 0 base_link front_infrared4_link __name:=front_infrared4_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.484 -0.073 0.081 -0.2967059728 0 0 base_link front_infrared5_link __name:=front_infrared5_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.477 -0.122 0.081 -0.4331907203 0 0 base_link front_infrared6_link __name:=front_infrared6_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.185 -0.115 0.081 -0.4398229715 0 0 base_link front_infrared7_link __name:=front_infrared7_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.024 0.075 0.16 3.1415926 0 0 base_link rear_infrared0_link __name:=rear_infrared0_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.024 -0.075 0.16 3.1415926 0 0 base_link rear_infrared1_link __name:=rear_infrared1_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.298 0.317 0.268 1.5707963 0 0 base_link front_sonar0_link __name:=front_sonar0_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.486 0.177 0.268 0.52359877559 0 0 base_link front_sonar1_link __name:=front_sonar1_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.422 0 0.268 0 0 0 base_link front_sonar2_link __name:=front_sonar2_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.486 -0.177 0.268 -0.52359877559 0 0 base_link front_sonar3_link __name:=front_sonar3_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0.298 -0.317 0.268 -1.5707963 0 0 base_link front_sonar4_link __name:=front_sonar4_link_bcastr"
+"/opt/ros/melodic/lib/tf2_ros/static_transform_publisher 0 0 0 0 0 0 base_link sda_imu_link __name:=sda_imu_link_bcastr"
+
+"/home/wassi9/ubtna_ros/lib/laser_filters/scan_to_scan_filter_chain __name:=laser_filter"
+"/home/wassi9/ubtna_ros/lib/rosbridge_server/rosbridge_websocket __name:=rosbridge_websocket"
+"/home/wassi9/ubtna_ros/lib/rosapi/rosapi_node __name:=rosapi"
+"/home/wassi9/ubtna_ros/lib/canopen_master/Wassi9.pyc __name:=canopen_master_node"
+"/home/wassi9/ubtna_ros/lib/nx_gpio/battery_monitor_node battery_state:=/nx_gpio/battery_state bms_command:=/nx_gpio/bms_command right_led_cmd:=/nx_gpio/right_led_cmd left_led_cmd:=/nx_gpio/left_led_cmd "
+"/home/wassi9/ubtna_ros/lib/nx_gpio/led_control_node battery_state:=/nx_gpio/battery_state bms_command:=/nx_gpio/bms_command right_led_cmd:=/nx_gpio/right_led_cmd left_led_cmd:=/nx_gpio/left_led_cmd "
+"/home/wassi9/ubtna_ros/lib/task_manager/task_manager_node __name:=task_manager_node"
+"/home/wassi9/ubtna_ros/lib/socket_port/socket_port_node __name:=socket_port_node"
+
+
+#gui
+"bash start_wassi-gui_gui.sh"
+
+"make platform-prod"
+"robot-platform/.venv/bin/python \|*/robot-platform/.venv/bin/flask run --port 5000"
+"/bin/sh -c FLASK_ENV=production pipenv run flask run --port 5000"
+"ffmpeg -v quiet -f v4l2 -r 15 -s 640x480 -i /dev/video0 -f v4l2 -pix_fmt rgb24 /dev/video11 -f v4l2 /dev/video10"
+
+"/usr/lib/firefox/firefox --kiosk --start-debugger-server 9222 --profile /home/wassi9/.mozilla/firefox/gui/ http://localhost/"
+"/usr/lib/firefox/firefox -contentproc -parentBuildID \|* -prefsLen \|* -prefMapSize \|* -appDir /usr/lib/firefox/browser \|* socket"
+"/usr/lib/firefox/firefox -contentproc -parentBuildID \|* -prefsLen \|* -prefMapSize \|* -appDir /usr/lib/firefox/browser \|* rdd"
+"/usr/lib/firefox/firefox -contentproc -childID 1 -isForBrowser -prefsLen \|* -prefMapSize \|* -jsInitLen 279340 -parentBuildID \|* -appDir /usr/lib/firefox/browser \|* tab"
+"/usr/lib/firefox/firefox -contentproc -childID 2 -isForBrowser -prefsLen \|* -prefMapSize \|* -jsInitLen 279340 -parentBuildID \|* -appDir /usr/lib/firefox/browser \|* tab"
+"/usr/lib/firefox/firefox -contentproc -childID 3 -isForBrowser -prefsLen \|* -prefMapSize \|* -jsInitLen 279340 -parentBuildID \|* -appDir /usr/lib/firefox/browser \|* tab"
+"/usr/lib/firefox/firefox -contentproc -childID 4 -isForBrowser -prefsLen \|* -prefMapSize \|* -jsInitLen 279340 -parentBuildID \|* -appDir /usr/lib/firefox/browser \|* tab"
+"/usr/lib/firefox/firefox -contentproc -childID 5 -isForBrowser -prefsLen \|* -prefMapSize \|* -jsInitLen 279340 -parentBuildID \|* -appDir /usr/lib/firefox/browser \|* tab"
+"/usr/lib/firefox/firefox -contentproc -childID 6 -isForBrowser -prefsLen \|* -prefMapSize \|* -jsInitLen 279340 -parentBuildID \|* -appDir /usr/lib/firefox/browser \|* tab"
+
+#audio
+"/home/wassi9/ubtna_ros/lib/wassi_audio/main.py __name:=audio"
+#"/home/wassi9/release/ubtna_ros_10_JameAudio/robot-platform/.venv/bin/python /home/wassi9/release/ubtna_ros_10_JameAudio/robot-platform/.venv/bin/flask run --port 5000"
+
+#ctrl
+"/home/wassi9/ubtna_ros/share/auto_start/scripts/wassi9_ctrl.sh"
+"/usr/bin/python /opt/ros/melodic/bin/roslaunch --wait trl9_multi_motor_ctrl trl9_multi_motor_ctrl.launc"
+"/home/wassi9/ubtna_ros/lib/trl9_multi_motor_ctrl/trl9_multi_motor_ctrl_node __name:=trl9_multi_motor_ctrl_node __log"
+"/home/wassi9/ubtna_ros/lib/trl9_multi_motor_ctrl/button_ctrl_node __name:=button_ctrl_node"
+
+
+#torso_CV
+"/bin/bash /home/wassi9/ubtna_ros/share/auto_start/scripts/wassi9_torsocv.sh"
+"/usr/bin/python /opt/ros/melodic/bin/roslaunch --wait ubt_torso_cv wassi-run.launch"
+"tee /home/wassi9/logs/cv/torso/log-files/ros-screen.log"
+"/home/wassi9/ubtna_ros/lib/ubt_torso_cv/ubt_torso_cv false usb __name:=ubt_torso_cv __log:=/home/wassi9/logs/cv/torso"
+
+#nav
+"/bin/bash /home/wassi9/ubtna_ros/share/auto_start/scripts/wassi9_nav.sh"
+"/usr/bin/python /opt/ros/melodic/bin/roslaunch --wait bringup_nav wassi9.launch"
+"/home/wassi9/ubtna_ros/lib/nav_interface/nav_interface_node __name:=nav_interface_node __log"
+"/home/wassi9/ubtna_ros/lib/nav_host/nav_host_node __name:=nav_host_node __log"
+"/home/wassi9/ubtna_ros/lib/laserscan_calibration/laserscan_calibration_node __name:=laserscan_calibration_node"
+"/home/wassi9/ubtna_ros/lib/ubt_gmapping/ubt_slam /home/wassi9/ubtna_ros/share/cloud_data/maps/map.yaml scan_filtered:=scan_filtered __name:=slam_gmapping"
+"/home/wassi9/ubtna_ros/lib/http_server/http_server_node __name:=http_server_node"
+
+#embedded device monitor
+"/home/wassi9/ubtna_ros/lib/embedded_diagnostics_pkg/embedded_diagnostics_logging_node __name:=embedded_diagnostics_logging"
+"/bin/bash /home/wassi9/ubtna_ros/share/auto_start/scripts/wassi9_embeddeddiag.sh"
+
+#IOT wearables
+"/usr/bin/python /opt/ros/melodic/bin/roslaunch --wait wassi_user_vitals wassi_vitals.launch"
+"/usr/bin/python3.6 /home/wassi9/ubtna_ros/lib/wassi_user_vitals/wassi_vitals_node.pyc __name:=iot_user_vitals_node"
+"/bin/bash /home/wassi9/ubtna_ros/share/auto_start/scripts/wassi9_IOT_wearables.sh"
+"/bin/bash /home/wassi9/ubtna_ros/share/auto_start/scripts/wassi9_IOT_IMUexercise.sh"
+"/usr/bin/python /opt/ros/melodic/bin/roslaunch --wait wassi_exercise_detection wassi_exercise_detection.launch"
+"/usr/bin/python3.6 /home/wassi9/ubtna_ros/lib/wassi_exercise_detection/exercise_detection_wassi9_node.pyc __name:=iot_exercise_detection_node"
+)
+
+
+
+
+should_not_run=(
+"/home/wassi9/release/ubtna_ros_10_JameAudio/robot-platform/.venv/bin/python /home/wassi9/release/ubtna_ros_10_JameAudio/robot-platform/.venv/bin/flask run --port 5000"
+"home/wassi9/ubtna_ros/lib/embedded_diagnostics_pkg/embedded_diagnostics_node __name:=embedded_diagnostics __log:"
+"/home/wassi9/ubtna_ros/lib/monitor/monitor_node __name:=monitor_node __log"
+"/home/wassi9/ubtna_ros/lib/ubt_top_cv/ubt_top_cv usb __name:=abnormal_detector __log:"
+"/home/wassi9/ubtna_ros/lib/hri_sm/hri_sm_node.py __name:=hri_sm"
+"/home/wassi9/ubtna_ros/share/auto_start/scripts/voice_wassi9.sh"
+"/opt/ros/melodic/bin/roslaunch wassi_audio audio.launch"
+"/home/wassi9/ubtna_ros/lib/wassi_dm/nodm_node.py __name:=dm"
+"/usr/sbin/mosquitto -c /etc/mosquitto/mosquitto.conf"
+
+#"topcv_wassi9.service"
+"/home/wassi9/ubtna_ros/share/auto_start/scripts/topcv_wassi9.sh"
+"/opt/ros/melodic/bin/roslaunch ubt_top_cv wassi.launch"
+"/home/wassi9/ubtna_ros/lib/ubt_top_cv/wassi-run.sh __name:=abnormal_detector __log"
+"/usr/bin/python /opt/ros/melodic/bin/roslaunch ubt_top_cv wassi-run.launch"
+"tee /home/wassi9/logs/cv/top/log-files/ros-screen.log"
+"/home/wassi9/ubtna_ros/lib/ubt_top_cv/ubt_top_cv __name:=abnormal_detector __log"
+"/home/wassi9/ubtna_ros/lib/ubt_top_cv/ubt_top_cv usb __name:=abnormal_detector __log:"
+
+)
+
+
+#text markup
+title=$(tput setaf 7; tput bold)
+red=$(tput setaf 1)
+green=$(tput setaf 2)
+text_style_reset=$(tput sgr0)
+
+##checking proccesses
+echo -e "$text_style_reset \n  syscheck start \n"
+
+
+function process_check {
+ echo -e "$title ----checking necessary process that need to running"
+ for each in "${processes[@]}"
+  do
+   #echo "$each"
+   #ps aux |grep  "$each" |grep -v 'grep'  |tr -s ' ' |cut -d' ' -f11-
+   ps aux |grep  "$each" |grep -v 'grep' >>  /dev/null
+   #echo $?
+   if [[ $? != 0 ]]
+    then
+     echo -e "$red fail: $each"
+   else
+     echo -e "$green pass: $each"
+   fi
+ done
+ echo  -e "$title ----checking necessary process completed \n"
+}
+
+#process_check
+
+audio_sink_ck(){
+ echo -e "$title \n----checking audio sink"
+ echo -e "$green"
+ pacmd stat |grep "Default sink name: alsa_output.usb-SEEED_ReSpeaker_4_Mic_Array__UAC1.0_-00.analog-stereo"
+ if [[ $? != 0 ]]
+  then
+    echo -e "$red fail: Default sink name: alsa_output.usb-SEEED_ReSpeaker_4_Mic_Array__UAC1.0_-00.analog-stereo"
+ fi
+ echo -e "$title \n----checking audio sink complete"
+ echo -e "$text_style_reset"
+}
+
+
+wifi_status(){
+  echo -e "$title \n----checking wifi status \n"
+  echo -e "$green"
+  ip a show wlan0 |grep 'ether\|inet '
+  iwconfig wlan0
+  echo -e "$title \n----checking wifi status complete"
+}
+
+cloud_check(){
+ echo -e "$title \n----checking cloud version\n"
+ echo -e "$green"
+ ~/ubtna_ros/release_note/tools/get_cloud_ver
+ if [[ $? != 0 ]]; then
+     echo -e "$red fail: Not able to connect to cloud"
+ fi
+ echo -e "$title \n----checking cloud version complete"
+ }
+
+
+time_server_check(){
+ echo -e "$title \n----checking time server\n"
+ systemctl status systemd-timesyncd.service
+ echo -e "$title \n----checking time server complete"
+}
+
+
+
+symlink_check(){
+ echo -e "$title  \n----checking symbolic links"
+
+declare -a file=("settings.yaml"
+"laser_filter_wassi9.yaml"
+"general_configs.yaml"
+"canIface_wassi9.launch")
+
+declare -a location=(
+~/ubtna_ros/share/settings/files/settings.yaml
+~/ubtna_ros/share/laser_filters/cfg/laser_filter_wassi9.yaml
+~/ubtna_ros/share/nav_database/param/general_configs.yaml
+~/ubtna_ros/share/canopen_master/launch/canIface_wassi9.launch
+~/ubtna_ros/share/cloud_data/maps
+~/ubtna_ros/share/ubt_torso_cv/database
+)
+
+
+for each in ${location[@]} ;
+do
+  if [ -L $each ] && [ -e $each ];  #check if is an link and exisit
+  then
+    echo -e "$green"
+    ls -l $each
+  else
+    echo -e "$red $each link is broken"
+  fi
+done
+echo -e "$text_style_reset"
+
+head -n 1 ~/ubtna_ros/share/settings/files/settings.yaml
+#for (( index=0; index<${#file[@]}; index++ ));
+#do
+#   if [[ -f  ~/configs/${file[$index]} ]]
+#     then
+#       echo -e "$green"
+#       ls -l ${location[$index]}
+#   else
+#       echo  -e "$red  ${file[$index]} doesn't exisit"
+#   fi
+#   echo -e "$text_style_reset"
+#done
+echo -e "$title  \n----checking symbolic links complete"
+}
+
+
+cpu_disk_check()
+{
+  echo -e "$title \n----checking CPU  temp"
+  cat /sys/devices/virtual/thermal/thermal_zone*/temp
+  echo -e "$title \n----checking CPU  usage"
+  uptime
+  echo -e "$title \n----checking disk "
+  df
+}
+
+
+
+auto_log_update_ck()
+{
+  echo -e "$title \n----checking logsync in crontab"
+  crontab -l |grep -F "0 * * * * USER=wassi9 /home/wassi9/ubtna_ros/share/logsync/sync_logs_to_cloud.sh"
+  if [[ $?  == 0 ]]; then
+     echo -e "$green success"
+  else
+     echo -e "$red fail: logsync is not in crontab. Need to run ubtna_ros/release_note/tool$/linux_env_setup.sh"
+  fi
+  echo -e "$title \n----checking logsync complete"
+}
+
+build_version_print()
+{
+  grep  build_release  ~/ubtna_ros/version.yaml
+  echo -e " ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~\n"
+
+}
+
+
+error_count_check()
+{
+ echo -e "$title \n----checking keyword in syslog, case insensitive"
+ echo -n '   fail  '  ;  cat /var/log/syslog |grep -i fail |wc -l
+ echo -n '   die  ' ; cat /var/log/syslog |grep -i die |wc -l
+ echo -n '   error  '  ; cat /var/log/syslog |grep -i error |wc -l
+ echo -n '   E:  '   ; cat /var/log/syslog |grep -i ' E:' |wc -l
+ echo -n '   EXCEPTION  ' ; cat /var/log/syslog |grep -i EXCEPTION |wc -l
+
+
+
+ echo -e "$title \n----checking syslog keyword  complete"
+}
+
+
+case $1 in
+
+  'p' | 'process' )
+  process_check
+  ;;
+
+  'a' |'audio' )
+  audio_sink_ck
+  ;;
+
+  'wifi' )
+  wifi_status
+  ;;
+
+  'c' |'cloud' )
+   cloud_check
+  ;;
+
+  'l' | 'link' | 'symblic' )
+  symlink_check
+  ;;
+
+  'd' | 'disk' )
+  symlink_check
+  ;;
+
+  'log')
+  auto_log_update_ck
+  ;;
+
+  'e'|'error')
+  error_count_check
+  ;;
+
+  '' | 'all' )
+  build_version_print
+  process_check
+  audio_sink_ck
+  wifi_status
+  cloud_check
+  time_server_check
+  symlink_check
+  cpu_disk_check
+  auto_log_update_ck
+  error_count_check
+  ;;
+
+  'h' | '-h' | 'help' | * )
+  echo -e  $help_msg
+  ;;
+
+
+esac
+
+echo -e "$title \n----checking syscheck complete"
+echo -e "$title ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~"
