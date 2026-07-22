@@ -1,0 +1,29 @@
+# bug title: Product name, software module, featuer, issue short description
+
+Product:
+System/Device:
+Software version:
+Environment changes:
+
+===========================
+
+Details of the issue:
+
+Steps to reproduce:
+
+Expected result:
+
+Reproducing rate:
+
+Log and screenshots:
+
+
+============================
+Root Cause:
+
+Solution:
+
+Fixed version:
+
+===========================
+Retest result:
