@@ -1,0 +1,47 @@
+#!/bin/bash
+#
+# Git post-commit hook: auto-bump VERSION and append to CHANGELOG.md when the
+# just-created commit includes any .sh file, then amend the commit so
+# VERSION/CHANGELOG land in the SAME commit.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+
+if [[ -n "$BOOTCHECK_HOOK_RUNNING" ]]; then
+    exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+VERSION_FILE="$REPO_ROOT/VERSION"
+CHANGELOG="$REPO_ROOT/CHANGELOG.md"
+
+sh_files=$(git diff-tree --no-commit-id --name-only -r HEAD -- '*.sh')
+[[ -z "$sh_files" ]] && exit 0
+[[ -f "$VERSION_FILE" ]] || exit 0
+
+current=$(tr -d '[:space:]' < "$VERSION_FILE")
+IFS='.' read -r major minor patch <<< "$current"
+patch=$((patch + 1))
+new_version="${major}.${minor}.${patch}"
+echo "$new_version" > "$VERSION_FILE"
+
+commit_msg=$(git log -1 --format=%s)
+date_str=$(date '+%Y-%m-%d')
+entry="## ${new_version} — ${date_str}\n- ${commit_msg}\n"
+
+if [[ -f "$CHANGELOG" ]]; then
+    {
+        head -1 "$CHANGELOG"
+        echo ""
+        echo -e "$entry"
+        tail -n +3 "$CHANGELOG"
+    } > "${CHANGELOG}.tmp"
+    mv "${CHANGELOG}.tmp" "$CHANGELOG"
+else
+    echo -e "# Bootcheck Changelog\n\n${entry}" > "$CHANGELOG"
+fi
+
+git add "$VERSION_FILE" "$CHANGELOG"
+
+export BOOTCHECK_HOOK_RUNNING=1
+git commit --amend --no-edit --no-verify >/dev/null
+exit 0
